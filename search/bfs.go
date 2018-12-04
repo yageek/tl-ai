@@ -8,35 +8,42 @@ import (
 	"github.com/gophersch/tlgo"
 )
 
-type NodeKind int
-
-// SearchBFS represents a bread first search pass
-type SearchBFS struct {
-	graph         []*Node
-	stopNameIndex map[string]*Node
+// BFS represents a bread first search pass
+type BFS struct {
+	graph         []*bfsNode
+	stopNameIndex map[string]*bfsNode
 }
 
-// Create a new BFS search
-func NewBFS(stops []tlgo.Stop, routes map[string]tlgo.RouteDetails) *SearchBFS {
+var (
+	// ErrNoPathFound is returned when no path between are found
+	ErrNoPathFound = errors.New("No path found")
+)
 
-	stopsNode := make([]*Node, len(stops))
-	nameIndex := make(map[string]*Node, len(stops))
+// NewBFS Create a new BFS session
+func NewBFS(stops []tlgo.Stop, lines []tlgo.Line, routes map[string]tlgo.RouteDetails) *BFS {
+
+	stopsNode := make([]*bfsNode, len(stops))
+	nameIndex := make(map[string]*bfsNode, len(stops))
+	lineMap := make(map[string]*tlgo.Line)
+
+	for _, line := range lines {
+		lineMap[line.ID] = &line
+	}
+
 	for i := range stops {
 
 		// Create the node of the stops
-		node := &Node{
-			nodeKind: nodeKindStop,
-			ID:       stops[i].ID,
-			Name:     stops[i].Name,
-			visited:  false,
-			childs:   []*Node{},
+		node := &bfsNode{
+			stop:    &stops[i],
+			visited: false,
+			links:   []*bfsNodeLink{},
 		}
 		stopsNode[i] = node
 		nameIndex[stops[i].Name] = node
 	}
 
-	for _, details := range routes {
-		var previous *Node
+	for lineID, details := range routes {
+		var previous *bfsNode
 
 		for _, stopDetails := range details.Stops {
 			current, hasFound := nameIndex[stopDetails.StopAreaName]
@@ -46,103 +53,81 @@ func NewBFS(stops []tlgo.Stop, routes map[string]tlgo.RouteDetails) *SearchBFS {
 			}
 			// log.Printf("Found stop %s in index\n", current.Name)
 			if previous != nil {
-				previous.childs = append(previous.childs, current)
+				previous.addLinkToNode(current, lineMap[lineID], details.Wayback)
 
 				if details.Wayback {
-					current.childs = append(current.childs, previous)
+					current.addLinkToNode(previous, lineMap[lineID], details.Wayback)
 				}
 			}
 			previous = current
 		}
 	}
 
-	return &SearchBFS{
+	return &BFS{
 		graph:         stopsNode,
 		stopNameIndex: nameIndex,
 	}
 }
 
-func (s *SearchBFS) FindStopToStopPath(source string, target string) ([]*Node, error) {
+type Step struct {
+	FromStop *tlgo.Stop
+	Stop     *tlgo.Stop
+	ByLine   *tlgo.Line
+}
+
+// FindStopToStopPath finds the path between two stops if it exists
+func (s *BFS) FindStopToStopPath(source string, target string) ([]Step, error) {
 
 	log.Printf("Starting search from %s -> %s\n", source, target)
 
 	start, hasSourceStop := s.stopNameIndex[source]
 	if !hasSourceStop {
-		return nil, fmt.Errorf("Starting stop %s was not found", source)
+		return []Step{}, fmt.Errorf("Starting stop %s was not found", source)
 	}
 	end, hasTargetStop := s.stopNameIndex[target]
 	if !hasTargetStop {
-		return nil, fmt.Errorf("Target stop %s was not found", target)
+		return []Step{}, fmt.Errorf("Target stop %s was not found", target)
 
 	}
 
-	fmt.Printf("Debug start: %+v -> %+v\n", start, end)
-	return bfsSearchStopToStop(start, end)
-
-}
-
-const (
-	nodeKindStop NodeKind = iota
-	nodeKindLine
-)
-
-type Node struct {
-	nodeKind NodeKind
-	ID       string
-	Name     string
-	childs   []*Node
-	visited  bool
-	parent   *Node
-}
-
-func (n *Node) mark() {
-	n.visited = true
-}
-
-// queue is a basic FIFO queue based on a circular list that resizes as needed.
-type queue struct {
-	nodes []*Node
-	size  int
-	head  int
-	tail  int
-	count int
-}
-
-// Newqueue returns a new queue with the given initial size.
-func newQueue(size int) *queue {
-	return &queue{
-		nodes: make([]*Node, size),
-		size:  size,
+	path, err := bfsSearchStopToStop(start, end)
+	if err != nil {
+		return []Step{}, err
 	}
-}
 
-// Push adds a node to the queue.
-func (q *queue) push(n *Node) {
-	if q.head == q.tail && q.count > 0 {
-		nodes := make([]*Node, len(q.nodes)+q.size)
-		copy(nodes, q.nodes[q.head:])
-		copy(nodes[len(q.nodes)-q.head:], q.nodes[:q.head])
-		q.head = 0
-		q.tail = len(q.nodes)
-		q.nodes = nodes
+	outs := make([]Step, len(path)+1)
+
+	outs[0] = Step{
+		FromStop: nil,
+		Stop:     start.stop,
+		ByLine:   nil,
 	}
-	q.nodes[q.tail] = n
-	q.tail = (q.tail + 1) % len(q.nodes)
-	q.count++
-}
 
-// Pop removes and returns a node from the queue in first to last order.
-func (q *queue) pop() *Node {
-	if q.count == 0 {
-		return nil
+	cursor := Step{
+		FromStop: start.stop,
+		Stop:     nil,
+		ByLine:   nil,
 	}
-	node := q.nodes[q.head]
-	q.head = (q.head + 1) % len(q.nodes)
-	q.count--
-	return node
+
+	for i := range path {
+		step := path[len(path)-i-1]
+		current := step.followedLink.node.stop
+		cursor.Stop = current
+		cursor.ByLine = step.followedLink.line
+
+		outs[i+1] = cursor
+
+		cursor = Step{
+			FromStop: current,
+			Stop:     nil,
+			ByLine:   nil,
+		}
+	}
+
+	return outs, nil
 }
 
-func bfsSearchStopToStop(start *Node, target *Node) ([]*Node, error) {
+func bfsSearchStopToStop(start *bfsNode, target *bfsNode) ([]stepNode, error) {
 	queue := newQueue(1)
 
 	queue.push(start)
@@ -152,20 +137,20 @@ func bfsSearchStopToStop(start *Node, target *Node) ([]*Node, error) {
 
 		if n == target {
 
-			path := []*Node{}
+			path := []stepNode{}
 			cursor := n
-			for cursor != nil {
-				path = append(path, cursor)
-				cursor = cursor.parent
+			for cursor.stepNode.followedLink != nil {
+				path = append(path, cursor.stepNode)
+				cursor = cursor.stepNode.parentNode
 			}
 			return path, nil
 		}
 
-		for _, c := range n.childs {
-			if !c.visited {
-				c.parent = n
-				queue.push(c)
-				c.mark()
+		for _, c := range n.links {
+			if !c.node.visited {
+				c.node.stepNode = stepNode{n, c}
+				queue.push(c.node)
+				c.node.mark()
 			}
 		}
 	}

@@ -6,8 +6,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/gophersch/tl-ai/search"
 	"github.com/gophersch/tlgo"
+	"github.com/yageek/tl-ai/search"
 )
 
 const (
@@ -58,7 +58,6 @@ func main() {
 					log.Printf("Can not fetch routes details for %s: %v", route.ID, err)
 				}
 				lineInfos[line.ID] = details
-				fmt.Printf("Size of map: %d\n", len(lineInfos))
 			}
 		}
 
@@ -92,13 +91,13 @@ func main() {
 	}
 
 	// Creating the tree
-	request := search.NewBFS(rawData.Stops, rawData.Routes)
-	path, err := request.FindStopToStopPath("Sablons", "Renens-Gare sud")
+	request := search.NewBFS(rawData.Stops, rawData.Lines, rawData.Routes)
+	steps, err := request.FindStopToStopPath("Sablons", "Renens-Gare sud")
 	if err != nil {
 		log.Printf("Error during the search: %v\n", err)
 	}
 
-	for _, step := range path {
+	for _, step := range steps {
 		fmt.Printf("Step: %v\n", step)
 	}
 
