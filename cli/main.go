@@ -45,7 +45,7 @@ func main() {
 		lineInfos := make(map[string]tlgo.RouteDetails)
 
 		for _, line := range lines {
-			log.Printf("\tList route for %s ...\n", line.ID)
+			log.Printf("\tList route for %s ...\n", line.Name)
 			routes, err := client.ListRoutes(line)
 			if err != nil {
 				log.Printf("Can not fetch routes for %s: %v", line.ID, err)
@@ -92,7 +92,7 @@ func main() {
 
 	// Creating the tree
 	request := search.NewBFS(rawData.Stops, rawData.Lines, rawData.Routes)
-	steps, err := request.FindStopToStopPath("Sablons", "Renens-Gare sud")
+	steps, err := request.FindStopToStopPath("Sablons", "Longemalle")
 	if err != nil {
 		log.Printf("Error during the search: %v\n", err)
 	}
