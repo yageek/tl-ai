@@ -75,6 +75,13 @@ type Step struct {
 	ByLine   *tlgo.Line
 }
 
+func (s Step) String() string {
+	if s.FromStop == nil || s.ByLine == nil {
+		return s.Stop.Name
+	}
+	return fmt.Sprintf("%s -> %s (%s)", s.FromStop.Name, s.Stop.Name, s.ByLine.Name)
+}
+
 // FindStopToStopPath finds the path between two stops if it exists
 func (s *BFS) FindStopToStopPath(source string, target string) ([]Step, error) {
 

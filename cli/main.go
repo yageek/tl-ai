@@ -98,7 +98,7 @@ func main() {
 	}
 
 	for _, step := range steps {
-		fmt.Printf("Step: %v\n", step)
+		fmt.Println(step)
 	}
 
 }
