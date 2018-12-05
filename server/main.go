@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/gophersch/tlgo"
 	"github.com/gorilla/pat"
-	"github.com/yageek/tl-ai/search"
 )
 
 var (
@@ -17,7 +17,7 @@ var (
 	USERNAME string
 	PASSWORD string
 
-	bfs *search.BFS
+	tlClient *tlgo.Client
 )
 
 func main() {
@@ -37,9 +37,9 @@ func main() {
 	}
 	rawData = data
 
-	bfs = search.NewBFS(rawData.Stops, rawData.Lines, rawData.Routes)
-	// Main app
+	tlClient = tlgo.NewClient()
 
+	// Main app
 	router := pat.New()
 
 	router.Post("/dialogflow_interactions", basicAuth(USERNAME, PASSWORD, dialogFlowHandler))

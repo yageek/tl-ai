@@ -7,7 +7,9 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/gophersch/tlgo"
 	"github.com/yageek/tl-ai/search"
 )
 
@@ -75,12 +77,13 @@ func stopNameFromMap(m map[string]interface{}) (string, error) {
 func answer(w http.ResponseWriter, mesg string) {
 
 	resp := fullFillementResponse{Text: mesg}
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf8")
 	json.NewEncoder(w).Encode(&resp)
 }
 
 func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 
+	log.Printf("New request for schedule !\n")
 	parameters := f.QueryResult.Parameters
 
 	stopOrigin, hasOrigin := parameters[StopOriginKey].(map[string]interface{})
@@ -125,14 +128,16 @@ func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 	// If line is not provided, we do a graph search to find the direction
 	if hasDestination && !hasLine {
 
-		steps, err := bfs.FindStopToStopPath(originValue, destinationValue)
+		bfs := search.NewBFS(rawData.Stops, rawData.Lines, rawData.Routes)
+		steps, err := bfs.FindStopToStopPath("Sablons", "Censuy")
 		if err == search.ErrNoPathFound {
 			log.Println("No path found!")
 			answer(w, "Aucun bus partant dans cette direction n'a été trouvé.")
-
+			return
 		} else if len(steps) < 1 || err != nil {
 			log.Println("Unknown error:", err)
 			answer(w, "Une erreur est survenue sur nos serveurs. Veuillez nous excuser pour ce contre-temps.")
+			return
 		} else {
 			// We ensure that only one line is used. If not, we prefer to not determine the next stop
 			startLine := steps[0].ByLine
@@ -155,4 +160,19 @@ func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 		answer(w, fmt.Sprintf("Les prochains départs pour %s sont à 18:00, 19:00", destinationValue))
 	}
 
+}
+
+func answerNextSchedule(w http.ResponseWriter, route *tlgo.Route, line *tlgo.Line) {
+
+	journeys, err := tlClient.ListStopDepartures(*route, *line, time.Now(), false)
+	if err != nil {
+		log.Println("TLAPI get schedules error:", err)
+		answer(w, "Une erreur est survenue sur nos serveurs. Veuillez nous excuser pour ce contre-temps.")
+		return
+	}
+
+	if len(journeys) < 1 {
+		msg := fmt.Sprintf("Aucun départ n'a été trouvé sur la ligne %s en direction de %s", line.Name)
+		answer(w, "Aucun départ n'est prévu sur l ")
+	}
 }
