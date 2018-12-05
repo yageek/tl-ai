@@ -53,10 +53,10 @@ func NewBFS(stops []tlgo.Stop, lines []tlgo.Line, routes map[string]tlgo.RouteDe
 			}
 			// log.Printf("Found stop %s in index\n", current.Name)
 			if previous != nil {
-				previous.addLinkToNode(current, lineMap[lineID], details.Wayback)
+				previous.addLinkToNode(current, lineMap[lineID], &details)
 
 				if details.Wayback {
-					current.addLinkToNode(previous, lineMap[lineID], details.Wayback)
+					current.addLinkToNode(previous, lineMap[lineID], &details)
 				}
 			}
 			previous = current
@@ -69,17 +69,19 @@ func NewBFS(stops []tlgo.Stop, lines []tlgo.Line, routes map[string]tlgo.RouteDe
 	}
 }
 
+// Step represents a bus stop travel step
 type Step struct {
 	FromStop *tlgo.Stop
 	Stop     *tlgo.Stop
 	ByLine   *tlgo.Line
+	ByRoute  *tlgo.RouteDetails
 }
 
 func (s Step) String() string {
-	if s.FromStop == nil || s.ByLine == nil {
+	if s.FromStop == nil || s.ByLine == nil || s.ByRoute == nil {
 		return s.Stop.Name
 	}
-	return fmt.Sprintf("%s -> %s (%s %s)", s.FromStop.Name, s.Stop.Name, s.ByLine.ShortName, s.ByLine.Name)
+	return fmt.Sprintf("%s -> %s (%s | %s via Route %s)", s.FromStop.Name, s.Stop.Name, s.ByLine.ShortName, s.ByLine.Name, s.ByRoute.ID)
 }
 
 // FindStopToStopPath finds the path between two stops if it exists
@@ -108,6 +110,7 @@ func (s *BFS) FindStopToStopPath(source string, target string) ([]Step, error) {
 		FromStop: start.stop,
 		Stop:     nil,
 		ByLine:   nil,
+		ByRoute:  nil,
 	}
 
 	for i := range path {
@@ -115,6 +118,7 @@ func (s *BFS) FindStopToStopPath(source string, target string) ([]Step, error) {
 		current := step.followedLink.node.stop
 		cursor.Stop = current
 		cursor.ByLine = step.followedLink.line
+		cursor.ByRoute = step.followedLink.route
 
 		outs[i] = cursor
 
@@ -155,5 +159,5 @@ func bfsSearchStopToStop(start *bfsNode, target *bfsNode) ([]stepNode, error) {
 			}
 		}
 	}
-	return nil, errors.New("No routes find :(")
+	return nil, ErrNoPathFound
 }

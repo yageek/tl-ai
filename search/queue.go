@@ -14,21 +14,21 @@ type stepNode struct {
 	followedLink *bfsNodeLink
 }
 
-func (n *bfsNode) addLinkToNode(o *bfsNode, line *tlgo.Line, wayback bool) {
+func (n *bfsNode) addLinkToNode(o *bfsNode, line *tlgo.Line, route *tlgo.RouteDetails) {
 
 	link := &bfsNodeLink{
-		node:    o,
-		line:    line,
-		wayback: wayback,
+		node:  o,
+		line:  line,
+		route: route,
 	}
 
 	n.links = append(n.links, link)
 }
 
 type bfsNodeLink struct {
-	node    *bfsNode
-	line    *tlgo.Line
-	wayback bool
+	node  *bfsNode
+	line  *tlgo.Line
+	route *tlgo.RouteDetails
 }
 
 func (n *bfsNode) mark() {
