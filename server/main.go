@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/gorilla/pat"
+	"github.com/yageek/tl-ai/search"
 )
 
 var (
@@ -15,6 +16,8 @@ var (
 
 	USERNAME string
 	PASSWORD string
+
+	bfs *search.BFS
 )
 
 func main() {
@@ -34,6 +37,7 @@ func main() {
 	}
 	rawData = data
 
+	bfs = search.NewBFS(rawData.Stops, rawData.Lines, rawData.Routes)
 	// Main app
 
 	router := pat.New()

@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/gophersch/tlgo"
 	"google.golang.org/api/option"
@@ -16,8 +18,8 @@ import (
 )
 
 const (
-	LineEntityName = "Line"
-	StopEntityName = "Stop"
+	LineEntityName = "line-name"
+	StopEntityName = "stop-name"
 )
 
 var (
@@ -25,6 +27,20 @@ var (
 	JSON_KEY_PATH string
 )
 
+func filter(s string) string {
+
+	invalidCharacters := "(),"
+
+	out := bytes.NewBufferString("")
+
+	for _, c := range s {
+		if strings.IndexRune(invalidCharacters, c) < 0 {
+			out.WriteRune(c)
+		}
+	}
+
+	return strings.Replace(out.String(), "VD", "", -1)
+}
 func main() {
 
 	// Get configuration vars
@@ -77,9 +93,12 @@ func main() {
 
 	lineEntities := make([]*dialogflowpb.EntityType_Entity, len(modelLines))
 	for i, line := range modelLines {
+
+		name := filter(line.ShortName)
+		fmt.Printf("Filtered line name: %s\n", name)
 		lineEntities[i] = &dialogflowpb.EntityType_Entity{
-			Value:    line.Name,
-			Synonyms: []string{line.ShortName, line.ID},
+			Value:    name,
+			Synonyms: []string{name},
 		}
 	}
 
@@ -104,9 +123,12 @@ func main() {
 
 	stopEntities := make([]*dialogflowpb.EntityType_Entity, len(modelStops))
 	for i, stop := range modelStops {
+		name := filter(stop.Name)
+		fmt.Printf("Filtered stop name: %s\n", name)
+
 		stopEntities[i] = &dialogflowpb.EntityType_Entity{
-			Value:    stop.Name,
-			Synonyms: []string{stop.ShortName, stop.ID},
+			Value:    name,
+			Synonyms: []string{name},
 		}
 	}
 

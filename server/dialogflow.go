@@ -1,10 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -13,9 +12,10 @@ import (
 )
 
 const (
-	FromToScheduleQuery     = "FromToScheduleQuery"
-	SourceParameterKey      = "Origin"
-	DestinationParameterKey = "Direction"
+	dialogFlowNextDepartureIntent = "NextDepartureQuery"
+	LineNameKey                   = "line-name"
+	StopOriginKey                 = "stop-origin"
+	StopDestinationKey            = "stop-destination"
 )
 
 type fullfillment struct {
@@ -34,6 +34,10 @@ type intent struct {
 	DisplayName string `json:"displayName"`
 }
 
+type fullFillementResponse struct {
+	Text string `json:"fulfillmentText"`
+}
+
 // indexHandler responds to requests with our greeting.
 func dialogFlowHandler(w http.ResponseWriter, r *http.Request) {
 
@@ -50,44 +54,105 @@ func dialogFlowHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 
-	if req.QueryResult.Intent.DisplayName == FromToScheduleQuery {
-
-		sourceMap, hastSource := req.QueryResult.Parameters[SourceParameterKey].(map[string]interface{})
-		destMap, hastDest := req.QueryResult.Parameters[DestinationParameterKey].(map[string]interface{})
-		if !hastDest || !hastSource {
-			http.Error(w, "Unkown Intent", http.StatusNotFound)
-			return
-		}
-
-		fmt.Printf("Query: %+v\n", req.QueryResult)
-		req := search.NewBFS(rawData.Stops, rawData.Lines, rawData.Routes)
-
-		source, hasDestSource := sourceMap["Stop"].(string)
-		dest, hasDestValue := destMap["Stop"].(string)
-		if !hasDestSource || !hasDestValue {
-			log.Println("Missing parameters")
-			http.Error(w, "Missing parameters", http.StatusBadRequest)
-			return
-		}
-
-		steps, err := req.FindStopToStopPath(source, dest)
-		if err == search.ErrNoPathFound {
-			log.Println("No path found!")
-			http.Error(w, "No path found", http.StatusNotFound)
-
-		} else if err != nil {
-			log.Println("Unknown error:", err)
-			http.Error(w, "Unknown error!", http.StatusInternalServerError)
-		} else {
-			strBuf := bytes.NewBufferString("")
-			for i, step := range steps {
-				fmt.Fprintf(strBuf, "Step %d: %s\n", i, step)
-			}
-			io.Copy(w, strBuf)
-		}
-
+	if req.QueryResult.Intent.DisplayName == dialogFlowNextDepartureIntent {
+		handleNextDepartureQuery(w, req)
 	} else {
 		http.Error(w, "Unkown Intent", http.StatusNotFound)
+	}
+
+}
+
+func stopNameFromMap(m map[string]interface{}) (string, error) {
+
+	key, hasKey := m["stop-name"].(string)
+	if !hasKey {
+		return "", errors.New("Entiity does not seem to be a stop")
+	}
+
+	return key, nil
+}
+
+func answer(w http.ResponseWriter, mesg string) {
+
+	resp := fullFillementResponse{Text: mesg}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(&resp)
+}
+
+func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
+
+	parameters := f.QueryResult.Parameters
+
+	stopOrigin, hasOrigin := parameters[StopOriginKey].(map[string]interface{})
+
+	if !hasOrigin {
+		answer(w, "Une erreur est survenue sur nos serveurs. Veuillez nous excuser pour ce contre-temps.")
+		return
+	}
+
+	originValue, err := stopNameFromMap(stopOrigin)
+	if err != nil {
+		answer(w, "Une erreur est survenue sur nos serveurs. Veuillez nous excuser pour ce contre-temps.")
+		return
+	}
+
+	stopDestination, hasDestination := parameters[StopDestinationKey].(map[string]interface{})
+	line := parameters[LineNameKey]
+	hasLine := line != ""
+
+	// Now depending on the situation, we will be able to answer the user or not
+
+	var destinationValue string
+	// But first, we check that destination is not the same as start
+	if hasDestination {
+		destinationValue, err = stopNameFromMap(stopDestination)
+		if err != nil {
+			answer(w, "Une erreur est survenue sur nos serveurs. Veuillez nous excuser pour ce contre-temps.")
+			return
+		}
+
+		if destinationValue == originValue {
+			answer(w, "Il me semble que vous soyez déjà arriver.")
+			return
+		}
+	}
+
+	// Simple case, we perform a request with the correct values
+	if hasDestination && hasLine {
+		answer(w, fmt.Sprintf("Le prochain départ pour %s est 18:00", destinationValue))
+	}
+
+	// If line is not provided, we do a graph search to find the direction
+	if hasDestination && !hasLine {
+
+		steps, err := bfs.FindStopToStopPath(originValue, destinationValue)
+		if err == search.ErrNoPathFound {
+			log.Println("No path found!")
+			answer(w, "Aucun bus partant dans cette direction n'a été trouvé.")
+
+		} else if len(steps) < 1 || err != nil {
+			log.Println("Unknown error:", err)
+			answer(w, "Une erreur est survenue sur nos serveurs. Veuillez nous excuser pour ce contre-temps.")
+		} else {
+			// We ensure that only one line is used. If not, we prefer to not determine the next stop
+			startLine := steps[0].ByLine
+			for _, iter := range steps {
+				if iter.ByLine != startLine {
+					msg := fmt.Sprintf("Les arrêts %s et %s ne se trouvent pas sur la même ligne. Je ne peux déterminer le chemin optimal pour le moment. Désolé.", originValue, destinationValue)
+					answer(w, msg)
+					return
+				}
+			}
+
+			answer(w, fmt.Sprintf("Le prochain départ pour %s est 18:00", destinationValue))
+			return
+		}
+
+	}
+
+	// If no destination, we enumerate all the departures from the line at the given stop
+	if !hasDestination && hasLine {
+		answer(w, fmt.Sprintf("Les prochains départs pour %s sont à 18:00, 19:00", destinationValue))
 	}
 
 }
