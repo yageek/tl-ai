@@ -56,12 +56,19 @@ func dialogFlowHandler(w http.ResponseWriter, r *http.Request) {
 		destMap, hastDest := req.QueryResult.Parameters[DestinationParameterKey].(map[string]interface{})
 		if !hastDest || !hastSource {
 			http.Error(w, "Unkown Intent", http.StatusNotFound)
+			return
 		}
 
+		fmt.Printf("Query: %+v\n", req.QueryResult)
 		req := search.NewBFS(rawData.Stops, rawData.Lines, rawData.Routes)
 
-		source := sourceMap["Stop"].(string)
-		dest := destMap["Stop"].(string)
+		source, hasDestSource := sourceMap["Stop"].(string)
+		dest, hasDestValue := destMap["Stop"].(string)
+		if !hasDestSource || !hasDestValue {
+			log.Println("Missing parameters")
+			http.Error(w, "Missing parameters", http.StatusBadRequest)
+			return
+		}
 
 		steps, err := req.FindStopToStopPath(source, dest)
 		if err == search.ErrNoPathFound {
