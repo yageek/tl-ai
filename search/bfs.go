@@ -6,11 +6,12 @@ import (
 	"log"
 
 	"github.com/gophersch/tlgo"
+	"github.com/yageek/tl-ai/storage"
 )
 
 type bsfLink struct {
 	routeID string
-	details *tlgo.RouteDetails
+	details tlgo.RouteDetails
 	node    *bfsNode
 }
 
@@ -22,10 +23,10 @@ type bfsNode struct {
 	in      bsfMove
 	links   []*bsfLink
 	visited bool
-	stop    *tlgo.Stop
+	stop    tlgo.Stop
 }
 
-func (n *bfsNode) linkToNode(o *bfsNode, routeID string, details *tlgo.RouteDetails) {
+func (n *bfsNode) linkToNode(o *bfsNode, routeID string, details tlgo.RouteDetails) {
 	link := &bsfLink{
 		routeID: routeID,
 		details: details,
@@ -40,8 +41,8 @@ func (n *bfsNode) mark() {
 
 // BFS represents a bread first search pass
 type BFS struct {
-	graph         []*bfsNode
-	stopNameIndex map[string]*bfsNode
+	graph           []*bfsNode
+	nodesByStopName map[string]*bfsNode
 }
 
 var (
@@ -50,7 +51,17 @@ var (
 )
 
 // NewBFS Create a new BFS session
-func NewBFS(stops map[string]*tlgo.Stop, lineRouteIndex map[string]*tlgo.Line, routesDetails map[string]*tlgo.RouteDetails) *BFS {
+func NewBFS(store storage.Store) (*BFS, error) {
+
+	stops, err := store.GetStops()
+	if err != nil {
+		return nil, err
+	}
+
+	routesDetails, err := store.GetRoutesDetailsByRouteID()
+	if err != nil {
+		return nil, err
+	}
 
 	stopsNode := make([]*bfsNode, len(stops))
 	nameIndex := make(map[string]*bfsNode, len(stops))
@@ -89,16 +100,16 @@ func NewBFS(stops map[string]*tlgo.Stop, lineRouteIndex map[string]*tlgo.Line, r
 	}
 
 	return &BFS{
-		graph:         stopsNode,
-		stopNameIndex: nameIndex,
-	}
+		graph:           stopsNode,
+		nodesByStopName: nameIndex,
+	}, nil
 }
 
 // Step represents a bus stop travel step
 type Step struct {
-	FromStop     *tlgo.Stop
-	ToStop       *tlgo.Stop
-	RouteDetails *tlgo.RouteDetails
+	FromStop     tlgo.Stop
+	ToStop       tlgo.Stop
+	RouteDetails tlgo.RouteDetails
 	RouteID      string
 }
 
@@ -107,12 +118,12 @@ func (s *BFS) FindStopToStopPath(source string, target string) ([]Step, error) {
 
 	log.Printf("Starting search from %s -> %s\n", source, target)
 
-	start, hasSourceStop := s.stopNameIndex[source]
-	if !hasSourceStop {
+	start, hasStart := s.nodesByStopName[source]
+	if !hasStart {
 		return []Step{}, fmt.Errorf("Starting stop %s was not found", source)
 	}
-	end, hasTargetStop := s.stopNameIndex[target]
-	if !hasTargetStop {
+	end, hastarget := s.nodesByStopName[target]
+	if !hastarget {
 		return []Step{}, fmt.Errorf("Target stop %s was not found", target)
 
 	}
@@ -144,7 +155,7 @@ func bfsSearchStopToStop(start *bfsNode, target *bfsNode) ([]Step, error) {
 				path = append(path, step)
 				step = Step{
 					ToStop:   nodeCursor.stop,
-					FromStop: nil,
+					FromStop: tlgo.Stop{},
 					RouteID:  "",
 				}
 				nodeCursor = n.in.fromNode

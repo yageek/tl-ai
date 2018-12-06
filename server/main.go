@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/gob"
 	"fmt"
 	"log"
 	"net/http"
@@ -8,16 +9,21 @@ import (
 
 	"github.com/gophersch/tlgo"
 	"github.com/gorilla/pat"
+	"github.com/yageek/tl-ai/dataprovider"
+	"github.com/yageek/tl-ai/storage"
 )
 
 var (
-	rawData rawDataGob
-	storage Storage
+	store storage.Store
 
 	USERNAME string
 	PASSWORD string
 
 	tlClient *tlgo.Client
+)
+
+const (
+	lastDataCache = "cache/apidata.gob"
 )
 
 func main() {
@@ -29,15 +35,15 @@ func main() {
 		log.Fatalf("USERNAME and PASSWORD env variables should be set.")
 	}
 
-	// Storage
-	storage = NewLocalDevStorage()
-	data, err := storage.GetCacheData()
+	// Load API data
+	apiData, err := getCacheData()
 	if err != nil {
-		log.Fatalf("Can not initialise storage: %s", err)
+		log.Fatalf("Can not get API data: %s\n", err)
 	}
 
-	rawData = data
-
+	// Store
+	store = storage.NewLocalStorage()
+	// Main client
 	tlClient = tlgo.NewClient()
 
 	// Main app
@@ -53,4 +59,46 @@ func main() {
 
 	log.Printf("Listening on port %s", port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), router))
+}
+
+func clearCache() error {
+	return os.Remove(lastDataCache)
+}
+
+func getCacheData() (dataprovider.APIRawData, error) {
+
+	rawData := dataprovider.APIRawData{}
+	if _, err := os.Stat(lastDataCache); os.IsNotExist(err) {
+		log.Printf("No cache files. Loading from the API...")
+
+		data, err := dataprovider.GetAPIData()
+		if err != nil {
+			return dataprovider.APIRawData{}, err
+		}
+
+		file, err := os.Create(lastDataCache)
+		if err != nil {
+			return dataprovider.APIRawData{}, err
+		}
+
+		if err := gob.NewEncoder(file).Encode(&data); err != nil {
+			return dataprovider.APIRawData{}, err
+		}
+
+		rawData = data
+
+	} else {
+		log.Printf("Reading cache files ....")
+		file, err := os.Open(lastDataCache)
+		if err != nil {
+			return dataprovider.APIRawData{}, err
+		}
+
+		err = gob.NewDecoder(file).Decode(&rawData)
+		if err != nil {
+			return dataprovider.APIRawData{}, err
+		}
+	}
+
+	return rawData, nil
 }

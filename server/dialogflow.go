@@ -101,8 +101,8 @@ func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 		return
 	}
 
-	originStop, isKnownStop := rawData.Stops[originValue]
-	if !isKnownStop {
+	originStop, err := store.GetStopByName(originValue)
+	if err != nil {
 		log.Printf("The origin value has not been found in the index\n")
 		answer(w, "Une erreur est survenue sur nos serveurs. Veuillez nous excuser pour ce contre-temps.")
 		return
@@ -130,21 +130,18 @@ func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 		}
 	}
 
-	var lineValue *tlgo.Line
+	var lineValue tlgo.Line
 	if hasLine {
 		// Look for line
-		for _, v := range rawData.LineRoutesIndex {
-			if v.ShortName == line {
-				lineValue = v
-				break
-			}
-		}
 
-		if lineValue == nil {
+		line, err := store.GetLineByName(line)
+		if err != nil {
 			log.Printf("Line node not found\n")
 			answer(w, "Une erreur est survenue sur nos serveurs. Veuillez nous excuser pour ce contre-temps.")
 			return
 		}
+
+		lineValue = line
 	}
 
 	// Simple case, we perform a request with the correct values
@@ -174,7 +171,14 @@ func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 	// If line is not provided, we do a graph search to find the direction
 	if hasDestination && !hasLine {
 		fmt.Printf("Get schedule from start and destination\n")
-		bfs := search.NewBFS(rawData.Stops, rawData.LineRoutesIndex, rawData.RoutesDetails)
+
+		bfs, err := search.NewBFS(store)
+		if err != nil {
+			log.Printf("Error during query creation: %s", err)
+			answer(w, "Une erreur est survenue sur nos serveurs. Veuillez nous excuser pour ce contre-temps.")
+			return
+		}
+
 		steps, err := bfs.FindStopToStopPath(originValue, destinationValue)
 		if err == search.ErrNoPathFound {
 			log.Println("No path found!")
@@ -201,7 +205,7 @@ func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 				}
 			}
 
-			answerNextSchedule(w, steps[0].FromStop, steps[0].Route, steps[0].RouteDetails.LineID)
+			answerNextSchedule(w, steps[0].FromStop.Name, steps[0].RouteID, steps[0].RouteDetails.LineID)
 			return
 		}
 
@@ -210,11 +214,16 @@ func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 	// If no destination, we enumerate all the departures from the line at the given stop
 	if !hasDestination && hasLine {
 		fmt.Printf("Get schedule from start and line\n")
-		routes := rawData.RoutesLinesIndex[lineValue]
+		routes, err := store.GetRoutesForLineID(lineValue.ID)
+		if err != nil {
+			log.Printf("Can not get routes from line: %v", err)
+			answer(w, "Une erreur est survenue sur nos serveurs. Veuillez nous excuser pour ce contre-temps.")
+			return
+		}
 
 		allDepartures := make([]departure, 1)
 		for _, r := range routes {
-			departures, err := getNextDeparture(originStop, r, lineValue)
+			departures, err := getNextDeparture(originStop.Name, r.ID, lineValue.ID)
 
 			if err != nil {
 				log.Printf("Impossible to get next departures: %s\n", err)
@@ -225,7 +234,7 @@ func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 
 		msg := fmt.Sprintf("Les prochains départs pour la ligne %s sont:\n", line)
 		for _, dpt := range allDepartures {
-			msg += fmt.Sprintf("%s en direction de %s", dpt.displaytext, dpt.route.CityDestinationStopName)
+			msg += fmt.Sprintf("%s en direction de %s", dpt.displaytext, dpt.routeID)
 		}
 		answer(w, msg)
 	}
@@ -233,14 +242,14 @@ func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 }
 
 type departure struct {
-	route       *tlgo.Route
-	line        *tlgo.Line
+	routeID     string
+	lineID      string
 	displaytext string
 	date        time.Time
 }
 
-func getNextDeparture(origin *tlgo.Stop, route *tlgo.Route, line *tlgo.Line) ([]departure, error) {
-	journeys, err := tlClient.ListStopDepartures(*route, *line, time.Now(), false)
+func getNextDeparture(stopName, routeID, lineID string) ([]departure, error) {
+	journeys, err := tlClient.ListStopDeparturesFromIDs(routeID, lineID, time.Now(), false)
 	if err != nil {
 		return []departure{}, err
 	}
@@ -254,8 +263,8 @@ func getNextDeparture(origin *tlgo.Stop, route *tlgo.Route, line *tlgo.Line) ([]
 
 	for _, j := range journeys {
 		for _, s := range j.Stops {
-			if s.Name == origin.Name {
-				d := departure{route, line, j.DisplayTime, j.Time}
+			if s.Name == stopName {
+				d := departure{routeID, lineID, j.DisplayTime, j.Time}
 				departures = append(departures, d)
 			}
 		}
@@ -263,15 +272,9 @@ func getNextDeparture(origin *tlgo.Stop, route *tlgo.Route, line *tlgo.Line) ([]
 	return departures, nil
 }
 
-func answerNextSchedule(w http.ResponseWriter, origin *tlgo.Stop, route *tlgo.Route) {
+func answerNextSchedule(w http.ResponseWriter, stopName, routeID, lineID string) {
 
-	if origin == nil || route == nil {
-		log.Printf("Missing at least one information to query the schedules")
-		answer(w, "Une erreur est survenue sur nos serveurs. Veuillez nous excuser pour ce contre-temps.")
-		return
-	}
-	log.Printf("Asking for schedule from: %s\n", origin.Name)
-	departures, err := getNextDeparture(origin, route, line)
+	departures, err := getNextDeparture(stopName, routeID, lineID)
 
 	if err != nil {
 		log.Println("TLAPI get schedules error:", err)
@@ -280,7 +283,7 @@ func answerNextSchedule(w http.ResponseWriter, origin *tlgo.Stop, route *tlgo.Ro
 	}
 
 	if len(departures) < 1 {
-		msg := fmt.Sprintf("Aucun départ n'a été trouvé sur la ligne %s en direction de %s", line.Name, origin.Name)
+		msg := fmt.Sprintf("Aucun départ n'a été trouvé sur la ligne %s en direction de %s", line, origin.Name)
 		answer(w, msg)
 	}
 
