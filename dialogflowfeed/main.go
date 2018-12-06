@@ -94,11 +94,9 @@ func main() {
 	lineEntities := make([]*dialogflowpb.EntityType_Entity, len(modelLines))
 	for i, line := range modelLines {
 
-		name := filter(line.ShortName)
-		fmt.Printf("Filtered line name: %s\n", name)
 		lineEntities[i] = &dialogflowpb.EntityType_Entity{
-			Value:    name,
-			Synonyms: []string{name},
+			Value:    line.ShortName,
+			Synonyms: []string{filter(line.ShortName)},
 		}
 	}
 
@@ -123,12 +121,10 @@ func main() {
 
 	stopEntities := make([]*dialogflowpb.EntityType_Entity, len(modelStops))
 	for i, stop := range modelStops {
-		name := filter(stop.Name)
-		fmt.Printf("Filtered stop name: %s\n", name)
 
 		stopEntities[i] = &dialogflowpb.EntityType_Entity{
-			Value:    name,
-			Synonyms: []string{name},
+			Value:    stop.Name,
+			Synonyms: []string{filter(stop.Name)},
 		}
 	}
 

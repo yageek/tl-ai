@@ -141,7 +141,7 @@ func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 		} else {
 			// We ensure that only one line is used. If not, we prefer to not determine the next stop
 			startLine := steps[0].ByLine
-			for _, iter := range steps {
+			for steps, iter := range steps {
 				if iter.ByLine != startLine {
 					msg := fmt.Sprintf("Les arrêts %s et %s ne se trouvent pas sur la même ligne. Je ne peux déterminer le chemin optimal pour le moment. Désolé.", originValue, destinationValue)
 					answer(w, msg)
@@ -149,7 +149,7 @@ func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 				}
 			}
 
-			answer(w, fmt.Sprintf("Le prochain départ pour %s est 18:00", destinationValue))
+			answerNextSchedule(w, steps[0].FromStop, steps[len(steps)-1].Stop, steps[0].ByRoute, steps[0].ByLine)
 			return
 		}
 
@@ -162,7 +162,12 @@ func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 
 }
 
-func answerNextSchedule(w http.ResponseWriter, route *tlgo.Route, line *tlgo.Line) {
+type departure struct {
+	displaytext string
+	date        time.Time
+}
+
+func answerNextSchedule(w http.ResponseWriter, origin, destination *tlgo.Stop, route *tlgo.Route, line *tlgo.Line) {
 
 	journeys, err := tlClient.ListStopDepartures(*route, *line, time.Now(), false)
 	if err != nil {
@@ -172,7 +177,26 @@ func answerNextSchedule(w http.ResponseWriter, route *tlgo.Route, line *tlgo.Lin
 	}
 
 	if len(journeys) < 1 {
-		msg := fmt.Sprintf("Aucun départ n'a été trouvé sur la ligne %s en direction de %s", line.Name)
-		answer(w, "Aucun départ n'est prévu sur l ")
+		msg := fmt.Sprintf("Aucun départ n'a été trouvé sur la ligne %s en direction de %s", line.Name, origin.Name)
+		answer(w, msg)
 	}
+
+	// Search all stops from origin
+	departures := make([]departure, 1)
+
+	for _, j := range journeys {
+		for _, s := range j.Stops {
+			if s.Name == origin.Name {
+				d := departure{j.DisplayTime, j.Time}
+				departures = append(departures, d)
+			}
+		}
+	}
+
+	msg := fmt.Sprintf("Les prochains départs pour le bus %s sont:\n", line.Name)
+	for _, departure := range departures {
+		msg += fmt.Sprintf("%s", departure.displaytext)
+	}
+
+	answer(w, msg)
 }
