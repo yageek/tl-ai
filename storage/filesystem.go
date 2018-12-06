@@ -107,3 +107,7 @@ func (s *LocalStorage) GetLineByName(name string) (tlgo.Line, error) {
 	}
 	return tlgo.Line{}, ErrNotFound
 }
+
+func (s *LocalStorage) GetRoutesDetailsByRouteID() (map[string]tlgo.RouteDetails, error) {
+	return s.routesDetailsByRouteID, nil
+}

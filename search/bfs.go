@@ -13,6 +13,7 @@ type bsfLink struct {
 	routeID string
 	details tlgo.RouteDetails
 	node    *bfsNode
+	line    tlgo.Line
 }
 
 type bsfMove struct {
@@ -26,11 +27,12 @@ type bfsNode struct {
 	stop    tlgo.Stop
 }
 
-func (n *bfsNode) linkToNode(o *bfsNode, routeID string, details tlgo.RouteDetails) {
+func (n *bfsNode) linkToNode(o *bfsNode, routeID string, line tlgo.Line, details tlgo.RouteDetails) {
 	link := &bsfLink{
 		routeID: routeID,
 		details: details,
 		node:    o,
+		line:    line,
 	}
 	n.links = append(n.links, link)
 }
@@ -66,7 +68,6 @@ func NewBFS(store storage.Store) (*BFS, error) {
 	stopsNode := make([]*bfsNode, len(stops))
 	nameIndex := make(map[string]*bfsNode, len(stops))
 
-	i := 0
 	for k := range stops {
 
 		// Create the node of the stops
@@ -74,9 +75,8 @@ func NewBFS(store storage.Store) (*BFS, error) {
 			stop:    stops[k],
 			visited: false,
 		}
-		stopsNode[i] = node
+		stopsNode[k] = node
 		nameIndex[stops[k].Name] = node
-		i++
 	}
 
 	for routeID, details := range routesDetails {
@@ -88,11 +88,17 @@ func NewBFS(store storage.Store) (*BFS, error) {
 				continue
 			}
 
+			line, err := store.GetLineForRouteID(routeID)
+			if err != nil {
+				fmt.Printf("Line not found for route ID: %s\n", err)
+				continue
+			}
+
 			if previous != nil {
-				previous.linkToNode(current, routeID, details)
+				previous.linkToNode(current, routeID, line, details)
 
 				if details.Wayback {
-					current.linkToNode(previous, routeID, details)
+					current.linkToNode(previous, routeID, line, details)
 				}
 			}
 			previous = current
@@ -111,6 +117,7 @@ type Step struct {
 	ToStop       tlgo.Stop
 	RouteDetails tlgo.RouteDetails
 	RouteID      string
+	Line         tlgo.Line
 }
 
 // FindStopToStopPath finds the path between two stops if it exists
@@ -128,6 +135,7 @@ func (s *BFS) FindStopToStopPath(source string, target string) ([]Step, error) {
 
 	}
 
+	fmt.Printf("Ok. Starting search...")
 	return bfsSearchStopToStop(start, end)
 }
 
@@ -146,11 +154,13 @@ func bfsSearchStopToStop(start *bfsNode, target *bfsNode) ([]Step, error) {
 			step := Step{
 				ToStop: n.stop,
 			}
+
 			for nodeCursor != nil {
 
-				step.FromStop = n.in.fromNode.stop
-				step.RouteID = n.in.viaLink.routeID
-				step.RouteDetails = n.in.viaLink.details
+				step.FromStop = nodeCursor.in.fromNode.stop
+				step.RouteID = nodeCursor.in.viaLink.routeID
+				step.RouteDetails = nodeCursor.in.viaLink.details
+				step.Line = nodeCursor.in.viaLink.line
 
 				path = append(path, step)
 				step = Step{
@@ -158,7 +168,8 @@ func bfsSearchStopToStop(start *bfsNode, target *bfsNode) ([]Step, error) {
 					FromStop: tlgo.Stop{},
 					RouteID:  "",
 				}
-				nodeCursor = n.in.fromNode
+				fmt.Printf("N in move: %+v\n", nodeCursor.in)
+				nodeCursor = nodeCursor.in.fromNode
 			}
 			return path, nil
 		}

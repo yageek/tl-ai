@@ -29,7 +29,7 @@ func GetAPIData() (APIRawData, error) {
 	routeDetailsByRouteID := make(map[string]tlgo.RouteDetails)
 
 	for _, line := range lines {
-		routes, err := client.ListRoutes(line)
+		routes, err := client.ListRoutes(line.ID)
 		if err != nil {
 			return APIRawData{}, err
 		}
@@ -41,7 +41,7 @@ func GetAPIData() (APIRawData, error) {
 			routesByLineID[line.ID] = append(routesByLineID[line.ID], route)
 			linesByRouteID[route.ID] = line
 
-			details, err := client.GetRouteDetails(route)
+			details, err := client.GetRouteDetails(route.ID)
 			if err != nil {
 				return APIRawData{}, err
 			}

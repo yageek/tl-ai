@@ -1,2 +1,3 @@
 tl-ai
 .vscode/
+cli/cache/*.gob

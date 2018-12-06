@@ -173,13 +173,17 @@ func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 		fmt.Printf("Get schedule from start and destination\n")
 
 		bfs, err := search.NewBFS(store)
+		log.Printf("bfs created")
+
 		if err != nil {
 			log.Printf("Error during query creation: %s", err)
 			answer(w, "Une erreur est survenue sur nos serveurs. Veuillez nous excuser pour ce contre-temps.")
 			return
 		}
 
+		log.Printf("Start search ...")
 		steps, err := bfs.FindStopToStopPath(originValue, destinationValue)
+		log.Printf("End search...")
 		if err == search.ErrNoPathFound {
 			log.Println("No path found!")
 			answer(w, "Aucun bus partant dans cette direction n'a été trouvé.")
@@ -205,7 +209,7 @@ func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 				}
 			}
 
-			answerNextSchedule(w, steps[0].FromStop.Name, steps[0].RouteID, steps[0].RouteDetails.LineID)
+			answerNextSchedule(w, steps[0].FromStop.Name, steps[0].RouteID, steps[0].Line)
 			return
 		}
 
@@ -249,7 +253,7 @@ type departure struct {
 }
 
 func getNextDeparture(stopName, routeID, lineID string) ([]departure, error) {
-	journeys, err := tlClient.ListStopDeparturesFromIDs(routeID, lineID, time.Now(), false)
+	journeys, err := tlClient.ListStopDepartures(routeID, lineID, time.Now(), false)
 	if err != nil {
 		return []departure{}, err
 	}
@@ -272,9 +276,9 @@ func getNextDeparture(stopName, routeID, lineID string) ([]departure, error) {
 	return departures, nil
 }
 
-func answerNextSchedule(w http.ResponseWriter, stopName, routeID, lineID string) {
+func answerNextSchedule(w http.ResponseWriter, stopName, routeID string, line tlgo.Line) {
 
-	departures, err := getNextDeparture(stopName, routeID, lineID)
+	departures, err := getNextDeparture(stopName, routeID, line.ID)
 
 	if err != nil {
 		log.Println("TLAPI get schedules error:", err)
@@ -283,7 +287,7 @@ func answerNextSchedule(w http.ResponseWriter, stopName, routeID, lineID string)
 	}
 
 	if len(departures) < 1 {
-		msg := fmt.Sprintf("Aucun départ n'a été trouvé sur la ligne %s en direction de %s", line, origin.Name)
+		msg := fmt.Sprintf("Aucun départ n'a été trouvé sur la ligne %s en direction de %s", line.Name, stopName)
 		answer(w, msg)
 	}
 
