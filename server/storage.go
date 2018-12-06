@@ -9,9 +9,10 @@ import (
 )
 
 type rawDataGob struct {
-	Stops  []tlgo.Stop
-	Lines  []tlgo.Line
-	Routes map[*tlgo.Route]tlgo.RouteDetails
+	Stops            map[string]*tlgo.Stop
+	LineRoutesIndex  map[*tlgo.Route]*tlgo.Line
+	RoutesLinesIndex map[*tlgo.Line][]*tlgo.Route
+	Routes           map[*tlgo.Route]tlgo.RouteDetails
 }
 
 // Storage abstracts the source of the data
@@ -43,6 +44,15 @@ func getAPIData() (rawDataGob, error) {
 		return rawDataGob{}, err
 	}
 
+	stopsMap := make(map[string]*tlgo.Stop, len(stops))
+
+	for i := range stops {
+		stopsMap[stops[i].Name] = &stops[i]
+	}
+
+	lineRoutesIndex := make(map[*tlgo.Route]*tlgo.Line)
+	routeLinesIndex := make(map[*tlgo.Line][]*tlgo.Route)
+
 	log.Printf("List lines...\n")
 	lines, err := client.ListLines()
 	if err != nil {
@@ -51,26 +61,34 @@ func getAPIData() (rawDataGob, error) {
 
 	routesInfos := make(map[*tlgo.Route]tlgo.RouteDetails)
 
-	for _, line := range lines {
-		log.Printf("\tList route for %s ...\n", line.Name)
-		routes, err := client.ListRoutes(line)
+	for lineIndex := range lines {
+		log.Printf("\tList route for %s ...\n", lines[lineIndex].Name)
+		routes, err := client.ListRoutes(lines[lineIndex])
 		if err != nil {
 			return rawDataGob{}, err
 		}
-		for i := range routes {
-			log.Printf("\tGet details for %s ...\n", routes[i].ID)
-			details, err := client.GetRouteDetails(routes[i])
+
+		routeLinesIndex[&lines[lineIndex]] = []*tlgo.Route{}
+
+		for routeIndex := range routes {
+
+			routeLinesIndex[&lines[lineIndex]] = append(routeLinesIndex[&lines[lineIndex]], &routes[routeIndex])
+			lineRoutesIndex[&routes[routeIndex]] = &lines[lineIndex]
+			log.Printf("\tGet details for %s ...\n", routes[routeIndex].ID)
+			details, err := client.GetRouteDetails(routes[routeIndex])
 			if err != nil {
 				return rawDataGob{}, err
 			}
-			routesInfos[&routes[i]] = details
+			routesInfos[&routes[routeIndex]] = details
+
 		}
 
 	}
 	data := rawDataGob{
-		Stops:  stops,
-		Lines:  lines,
-		Routes: routesInfos,
+		Stops:            stopsMap,
+		LineRoutesIndex:  lineRoutesIndex,
+		RoutesLinesIndex: routeLinesIndex,
+		Routes:           routesInfos,
 	}
 
 	return data, nil

@@ -20,7 +20,19 @@ var (
 	tlClient *tlgo.Client
 )
 
+type test struct {
+	A string
+}
+
 func main() {
+
+	v := make(map[*test]struct{})
+
+	v[&test{"A"}] = struct{}{}
+	v[&test{"B"}] = struct{}{}
+	v[&test{"C"}] = struct{}{}
+
+	fmt.Printf("V: %#v - %d \n", v, len(v))
 
 	// Configuration
 	USERNAME = os.Getenv("USERNAME")

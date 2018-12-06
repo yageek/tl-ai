@@ -52,23 +52,25 @@ var (
 )
 
 // NewBFS Create a new BFS session
-func NewBFS(stops []tlgo.Stop, lines []tlgo.Line, routes map[*tlgo.Route]tlgo.RouteDetails) *BFS {
+func NewBFS(stops map[string]*tlgo.Stop, lineRouteIndex map[*tlgo.Route]*tlgo.Line, routesDetails map[*tlgo.Route]tlgo.RouteDetails) *BFS {
 
 	stopsNode := make([]*bfsNode, len(stops))
 	nameIndex := make(map[string]*bfsNode, len(stops))
 
-	for i := range stops {
+	i := 0
+	for k := range stops {
 
 		// Create the node of the stops
 		node := &bfsNode{
-			stop:    &stops[i],
+			stop:    stops[k],
 			visited: false,
 		}
 		stopsNode[i] = node
-		nameIndex[stops[i].Name] = node
+		nameIndex[stops[k].Name] = node
+		i++
 	}
 
-	for route, details := range routes {
+	for route, details := range routesDetails {
 		var previous *bfsNode
 
 		for _, stopDetails := range details.Stops {
@@ -77,11 +79,16 @@ func NewBFS(stops []tlgo.Stop, lines []tlgo.Line, routes map[*tlgo.Route]tlgo.Ro
 				continue
 			}
 
+			line, hasLine := lineRouteIndex[route]
+			if !hasLine {
+				log.Printf("WARN: no line linked to route: %s\n", route.Name)
+				continue
+			}
 			if previous != nil {
-				previous.linkToNode(current, nil, route, &details)
+				previous.linkToNode(current, line, route, &details)
 
 				if details.Wayback {
-					current.linkToNode(previous, nil, route, &details)
+					current.linkToNode(previous, line, route, &details)
 				}
 			}
 			previous = current
