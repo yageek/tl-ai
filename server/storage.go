@@ -11,7 +11,7 @@ import (
 type rawDataGob struct {
 	Stops  []tlgo.Stop
 	Lines  []tlgo.Line
-	Routes map[string]tlgo.RouteDetails
+	Routes map[*tlgo.Route]tlgo.RouteDetails
 }
 
 // Storage abstracts the source of the data
@@ -49,7 +49,7 @@ func getAPIData() (rawDataGob, error) {
 		return rawDataGob{}, err
 	}
 
-	lineInfos := make(map[string]tlgo.RouteDetails)
+	routesInfos := make(map[*tlgo.Route]tlgo.RouteDetails)
 
 	for _, line := range lines {
 		log.Printf("\tList route for %s ...\n", line.Name)
@@ -57,20 +57,20 @@ func getAPIData() (rawDataGob, error) {
 		if err != nil {
 			return rawDataGob{}, err
 		}
-		for _, route := range routes {
-			log.Printf("\tGet details for %s ...\n", route.ID)
-			details, err := client.GetRouteDetails(route)
+		for i := range routes {
+			log.Printf("\tGet details for %s ...\n", routes[i].ID)
+			details, err := client.GetRouteDetails(routes[i])
 			if err != nil {
 				return rawDataGob{}, err
 			}
-			lineInfos[line.ID] = details
+			routesInfos[&routes[i]] = details
 		}
 
 	}
 	data := rawDataGob{
 		Stops:  stops,
 		Lines:  lines,
-		Routes: lineInfos,
+		Routes: routesInfos,
 	}
 
 	return data, nil

@@ -1,41 +1,5 @@
 package search
 
-import "github.com/gophersch/tlgo"
-
-type bfsNode struct {
-	links    []*bfsNodeLink
-	visited  bool
-	stepNode stepNode
-	stop     *tlgo.Stop
-}
-
-type stepNode struct {
-	parentNode   *bfsNode
-	followedLink *bfsNodeLink
-}
-
-func (n *bfsNode) addLinkToNode(o *bfsNode, line *tlgo.Line, routeDetails *tlgo.RouteDetails, route *tlgo.Route) {
-
-	link := &bfsNodeLink{
-		node:         o,
-		line:         line,
-		routeDetails: routeDetails,
-	}
-
-	n.links = append(n.links, link)
-}
-
-type bfsNodeLink struct {
-	node         *bfsNode
-	line         *tlgo.Line
-	routeDetails *tlgo.RouteDetails
-	route        *tlgo.Route
-}
-
-func (n *bfsNode) mark() {
-	n.visited = true
-}
-
 // queue is a basic FIFO queue based on a circular list that resizes as needed.
 type queue struct {
 	nodes []*bfsNode

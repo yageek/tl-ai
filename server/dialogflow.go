@@ -83,18 +83,20 @@ func answer(w http.ResponseWriter, mesg string) {
 
 func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 
-	log.Printf("New request for schedule !\n")
+	log.Printf("Next departure query...\n")
 	parameters := f.QueryResult.Parameters
 
 	stopOrigin, hasOrigin := parameters[StopOriginKey].(map[string]interface{})
 
 	if !hasOrigin {
+		log.Printf("The origin information has not been provided by the bot\n")
 		answer(w, "Une erreur est survenue sur nos serveurs. Veuillez nous excuser pour ce contre-temps.")
 		return
 	}
 
 	originValue, err := stopNameFromMap(stopOrigin)
 	if err != nil {
+		log.Printf("The origin value has not been provided\n")
 		answer(w, "Une erreur est survenue sur nos serveurs. Veuillez nous excuser pour ce contre-temps.")
 		return
 	}
@@ -110,6 +112,7 @@ func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 	if hasDestination {
 		destinationValue, err = stopNameFromMap(stopDestination)
 		if err != nil {
+			log.Printf("The destination value has not been provided\n")
 			answer(w, "Une erreur est survenue sur nos serveurs. Veuillez nous excuser pour ce contre-temps.")
 			return
 		}
@@ -135,21 +138,27 @@ func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 			answer(w, "Aucun bus partant dans cette direction n'a été trouvé.")
 			return
 		} else if len(steps) < 1 || err != nil {
-			log.Println("Unknown error:", err)
+
+			if err != nil {
+				log.Println("Unknown error:", err)
+			} else {
+				log.Println("No journeys has been returned.")
+			}
+
 			answer(w, "Une erreur est survenue sur nos serveurs. Veuillez nous excuser pour ce contre-temps.")
 			return
 		} else {
 			// We ensure that only one line is used. If not, we prefer to not determine the next stop
-			startLine := steps[0].ByLine
-			for steps, iter := range steps {
-				if iter.ByLine != startLine {
+			startLine := steps[0].Line
+			for _, iter := range steps {
+				if iter.Line != startLine {
 					msg := fmt.Sprintf("Les arrêts %s et %s ne se trouvent pas sur la même ligne. Je ne peux déterminer le chemin optimal pour le moment. Désolé.", originValue, destinationValue)
 					answer(w, msg)
 					return
 				}
 			}
 
-			answerNextSchedule(w, steps[0].FromStop, steps[len(steps)-1].Stop, steps[0].ByRoute, steps[0].ByLine)
+			answerNextSchedule(w, steps[0].FromStop, steps[len(steps)-1].ToStop, steps[0].Route, steps[0].Line)
 			return
 		}
 
@@ -169,6 +178,12 @@ type departure struct {
 
 func answerNextSchedule(w http.ResponseWriter, origin, destination *tlgo.Stop, route *tlgo.Route, line *tlgo.Line) {
 
+	if origin == nil || destination == nil || route == nil || line == nil {
+		log.Printf("Missing at least one information to query the schedules")
+		answer(w, "Une erreur est survenue sur nos serveurs. Veuillez nous excuser pour ce contre-temps.")
+		return
+	}
+	log.Printf("Asking for schedule: %s -> %s\n", origin.Name, destination.Name)
 	journeys, err := tlClient.ListStopDepartures(*route, *line, time.Now(), false)
 	if err != nil {
 		log.Println("TLAPI get schedules error:", err)
