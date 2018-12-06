@@ -10,9 +10,10 @@ import (
 
 type rawDataGob struct {
 	Stops            map[string]*tlgo.Stop
-	LineRoutesIndex  map[*tlgo.Route]*tlgo.Line
-	RoutesLinesIndex map[*tlgo.Line][]*tlgo.Route
-	Routes           map[*tlgo.Route]tlgo.RouteDetails
+	LineRoutesIndex  map[string]*tlgo.Line
+	RoutesLinesIndex map[string][]*tlgo.Route
+	RoutesDetails    map[string]*tlgo.RouteDetails
+	Routes           map[string]*tlgo.Route
 }
 
 // Storage abstracts the source of the data
@@ -50,8 +51,8 @@ func getAPIData() (rawDataGob, error) {
 		stopsMap[stops[i].Name] = &stops[i]
 	}
 
-	lineRoutesIndex := make(map[*tlgo.Route]*tlgo.Line)
-	routeLinesIndex := make(map[*tlgo.Line][]*tlgo.Route)
+	lineRoutesIndex := make(map[string]*tlgo.Line)
+	routeLinesIndex := make(map[string][]*tlgo.Route)
 
 	log.Printf("List lines...\n")
 	lines, err := client.ListLines()
@@ -59,27 +60,27 @@ func getAPIData() (rawDataGob, error) {
 		return rawDataGob{}, err
 	}
 
-	routesInfos := make(map[*tlgo.Route]tlgo.RouteDetails)
+	routesInfos := make(map[string]tlgo.RouteDetails)
 
-	for lineIndex := range lines {
-		log.Printf("\tList route for %s ...\n", lines[lineIndex].Name)
-		routes, err := client.ListRoutes(lines[lineIndex])
+	for lineIndex, line := range lines {
+		log.Printf("\tList route for %s ...\n", line.Name)
+		routes, err := client.ListRoutes(line)
 		if err != nil {
 			return rawDataGob{}, err
 		}
 
-		routeLinesIndex[&lines[lineIndex]] = []*tlgo.Route{}
+		routeLinesIndex[line.ID] = []*tlgo.Route{}
 
-		for routeIndex := range routes {
+		for routeIndex, route := range routes {
 
-			routeLinesIndex[&lines[lineIndex]] = append(routeLinesIndex[&lines[lineIndex]], &routes[routeIndex])
-			lineRoutesIndex[&routes[routeIndex]] = &lines[lineIndex]
-			log.Printf("\tGet details for %s ...\n", routes[routeIndex].ID)
-			details, err := client.GetRouteDetails(routes[routeIndex])
+			routeLinesIndex[line.ID] = append(routeLinesIndex[line.ID], &routes[routeIndex])
+			lineRoutesIndex[route.ID] = &lines[lineIndex]
+			log.Printf("\tGet details for %s ...\n", route.ID)
+			details, err := client.GetRouteDetails(route)
 			if err != nil {
 				return rawDataGob{}, err
 			}
-			routesInfos[&routes[routeIndex]] = details
+			routesInfos[route.ID] = details
 
 		}
 
@@ -88,7 +89,7 @@ func getAPIData() (rawDataGob, error) {
 		Stops:            stopsMap,
 		LineRoutesIndex:  lineRoutesIndex,
 		RoutesLinesIndex: routeLinesIndex,
-		Routes:           routesInfos,
+		RoutesDetails:    routesInfos,
 	}
 
 	return data, nil

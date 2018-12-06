@@ -9,8 +9,7 @@ import (
 )
 
 type bsfLink struct {
-	line    *tlgo.Line
-	route   *tlgo.Route
+	routeID string
 	details *tlgo.RouteDetails
 	node    *bfsNode
 }
@@ -26,10 +25,9 @@ type bfsNode struct {
 	stop    *tlgo.Stop
 }
 
-func (n *bfsNode) linkToNode(o *bfsNode, line *tlgo.Line, route *tlgo.Route, details *tlgo.RouteDetails) {
+func (n *bfsNode) linkToNode(o *bfsNode, routeID string, details *tlgo.RouteDetails) {
 	link := &bsfLink{
-		line:    line,
-		route:   route,
+		routeID: routeID,
 		details: details,
 		node:    o,
 	}
@@ -52,7 +50,7 @@ var (
 )
 
 // NewBFS Create a new BFS session
-func NewBFS(stops map[string]*tlgo.Stop, lineRouteIndex map[*tlgo.Route]*tlgo.Line, routesDetails map[*tlgo.Route]tlgo.RouteDetails) *BFS {
+func NewBFS(stops map[string]*tlgo.Stop, lineRouteIndex map[string]*tlgo.Line, routesDetails map[string]*tlgo.RouteDetails) *BFS {
 
 	stopsNode := make([]*bfsNode, len(stops))
 	nameIndex := make(map[string]*bfsNode, len(stops))
@@ -70,7 +68,7 @@ func NewBFS(stops map[string]*tlgo.Stop, lineRouteIndex map[*tlgo.Route]*tlgo.Li
 		i++
 	}
 
-	for route, details := range routesDetails {
+	for routeID, details := range routesDetails {
 		var previous *bfsNode
 
 		for _, stopDetails := range details.Stops {
@@ -79,16 +77,11 @@ func NewBFS(stops map[string]*tlgo.Stop, lineRouteIndex map[*tlgo.Route]*tlgo.Li
 				continue
 			}
 
-			line, hasLine := lineRouteIndex[route]
-			if !hasLine {
-				log.Printf("WARN: no line linked to route: %s\n", route.Name)
-				continue
-			}
 			if previous != nil {
-				previous.linkToNode(current, line, route, &details)
+				previous.linkToNode(current, routeID, details)
 
 				if details.Wayback {
-					current.linkToNode(previous, line, route, &details)
+					current.linkToNode(previous, routeID, details)
 				}
 			}
 			previous = current
@@ -105,9 +98,8 @@ func NewBFS(stops map[string]*tlgo.Stop, lineRouteIndex map[*tlgo.Route]*tlgo.Li
 type Step struct {
 	FromStop     *tlgo.Stop
 	ToStop       *tlgo.Stop
-	Line         *tlgo.Line
 	RouteDetails *tlgo.RouteDetails
-	Route        *tlgo.Route
+	RouteID      string
 }
 
 // FindStopToStopPath finds the path between two stops if it exists
@@ -146,16 +138,14 @@ func bfsSearchStopToStop(start *bfsNode, target *bfsNode) ([]Step, error) {
 			for nodeCursor != nil {
 
 				step.FromStop = n.in.fromNode.stop
-				step.Line = n.in.viaLink.line
-				step.Route = n.in.viaLink.route
+				step.RouteID = n.in.viaLink.routeID
 				step.RouteDetails = n.in.viaLink.details
 
 				path = append(path, step)
 				step = Step{
 					ToStop:   nodeCursor.stop,
 					FromStop: nil,
-					Line:     nil,
-					Route:    nil,
+					RouteID:  "",
 				}
 				nodeCursor = n.in.fromNode
 			}

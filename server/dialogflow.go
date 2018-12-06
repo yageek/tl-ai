@@ -174,7 +174,7 @@ func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 	// If line is not provided, we do a graph search to find the direction
 	if hasDestination && !hasLine {
 		fmt.Printf("Get schedule from start and destination\n")
-		bfs := search.NewBFS(rawData.Stops, rawData.LineRoutesIndex, rawData.Routes)
+		bfs := search.NewBFS(rawData.Stops, rawData.LineRoutesIndex, rawData.RoutesDetails)
 		steps, err := bfs.FindStopToStopPath(originValue, destinationValue)
 		if err == search.ErrNoPathFound {
 			log.Println("No path found!")
@@ -192,16 +192,16 @@ func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 			return
 		} else {
 			// We ensure that only one line is used. If not, we prefer to not determine the next stop
-			startLine := steps[0].Line
+			startLine := steps[0].RouteDetails.LineID
 			for _, iter := range steps {
-				if iter.Line != startLine {
+				if iter.RouteDetails.LineID != startLine {
 					msg := fmt.Sprintf("Les arrêts %s et %s ne se trouvent pas sur la même ligne. Je ne peux déterminer le chemin optimal pour le moment. Désolé.", originValue, destinationValue)
 					answer(w, msg)
 					return
 				}
 			}
 
-			answerNextSchedule(w, steps[0].FromStop, steps[0].Route, steps[0].Line)
+			answerNextSchedule(w, steps[0].FromStop, steps[0].Route, steps[0].RouteDetails.LineID)
 			return
 		}
 
@@ -263,9 +263,9 @@ func getNextDeparture(origin *tlgo.Stop, route *tlgo.Route, line *tlgo.Line) ([]
 	return departures, nil
 }
 
-func answerNextSchedule(w http.ResponseWriter, origin *tlgo.Stop, route *tlgo.Route, line *tlgo.Line) {
+func answerNextSchedule(w http.ResponseWriter, origin *tlgo.Stop, route *tlgo.Route) {
 
-	if origin == nil || route == nil || line == nil {
+	if origin == nil || route == nil {
 		log.Printf("Missing at least one information to query the schedules")
 		answer(w, "Une erreur est survenue sur nos serveurs. Veuillez nous excuser pour ce contre-temps.")
 		return
