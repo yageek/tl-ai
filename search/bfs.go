@@ -113,8 +113,7 @@ func NewBFS(store storage.Store) (*BFS, error) {
 
 // Step represents a bus stop travel step
 type Step struct {
-	FromStop     tlgo.Stop
-	ToStop       tlgo.Stop
+	Stop         tlgo.Stop
 	RouteDetails tlgo.RouteDetails
 	RouteID      string
 	Line         tlgo.Line
@@ -134,8 +133,6 @@ func (s *BFS) FindStopToStopPath(source string, target string) ([]Step, error) {
 		return []Step{}, fmt.Errorf("Target stop %s was not found", target)
 
 	}
-
-	fmt.Printf("Ok. Starting search...")
 	return bfsSearchStopToStop(start, end)
 }
 
@@ -149,28 +146,23 @@ func bfsSearchStopToStop(start *bfsNode, target *bfsNode) ([]Step, error) {
 
 		if n == target {
 
-			path := make([]Step, 1)
+			path := []Step{}
 			nodeCursor := n
-			step := Step{
-				ToStop: n.stop,
-			}
 
-			for nodeCursor != nil {
+			for nodeCursor.in.fromNode != nil {
 
-				step.FromStop = nodeCursor.in.fromNode.stop
-				step.RouteID = nodeCursor.in.viaLink.routeID
-				step.RouteDetails = nodeCursor.in.viaLink.details
-				step.Line = nodeCursor.in.viaLink.line
+				step := Step{
+					RouteID:      nodeCursor.in.viaLink.routeID,
+					RouteDetails: nodeCursor.in.viaLink.details,
+					Line:         nodeCursor.in.viaLink.line,
+					Stop:         nodeCursor.stop,
+				}
 
 				path = append(path, step)
-				step = Step{
-					ToStop:   nodeCursor.stop,
-					FromStop: tlgo.Stop{},
-					RouteID:  "",
-				}
-				fmt.Printf("N in move: %+v\n", nodeCursor.in)
+				fmt.Printf("Stop: %s | Step Route: %s | Step Line: %s\n", step.Stop.Name, step.RouteID, step.Line)
 				nodeCursor = nodeCursor.in.fromNode
 			}
+
 			return path, nil
 		}
 

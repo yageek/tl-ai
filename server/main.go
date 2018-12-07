@@ -2,12 +2,14 @@ package main
 
 import (
 	"encoding/gob"
+	"fmt"
 	"log"
+	"net/http"
 	"os"
 
 	"github.com/gophersch/tlgo"
+	"github.com/gorilla/pat"
 	"github.com/yageek/tl-ai/dataprovider"
-	"github.com/yageek/tl-ai/search"
 	"github.com/yageek/tl-ai/storage"
 )
 
@@ -42,34 +44,36 @@ func main() {
 	// Store
 	store = storage.NewLocalStorage(apiData)
 
-	bfs, err := search.NewBFS(store)
-	if err != nil {
-		log.Fatalf("Error store: %s", err)
-	}
-
-	steps, err := bfs.FindStopToStopPath("Sablons", "Renens-Gare sud")
-	if err != nil {
-		log.Fatalf("Error store: %s", err)
-	}
-
-	log.Printf("Steps: %v\n", steps)
-
-	// // Main client
-	// tlClient = tlgo.NewClient()
-
-	// // Main app
-	// router := pat.New()
-
-	// router.Post("/dialogflow_interactions", basicAuth(USERNAME, PASSWORD, dialogFlowHandler))
-
-	// port := os.Getenv("PORT")
-	// if port == "" {
-	// 	port = "8080"
-	// 	log.Printf("Defaulting to port %s", port)
+	// bfs, err := search.NewBFS(store)
+	// if err != nil {
+	// 	log.Fatalf("Error store: %s", err)
 	// }
 
-	// log.Printf("Listening on port %s", port)
-	// log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), router))
+	// steps, err := bfs.FindStopToStopPath("Sablons", "Renens-Gare sud")
+	// if err != nil {
+	// 	log.Fatalf("Error store: %s", err)
+	// }
+
+	// for i, step := range steps {
+	// 	fmt.Printf("Step %d: %s\n", i, step.Stop.Name)
+	// }
+
+	// Main client
+	tlClient = tlgo.NewClient()
+
+	// Main app
+	router := pat.New()
+
+	router.Post("/dialogflow_interactions", basicAuth(USERNAME, PASSWORD, dialogFlowHandler))
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+		log.Printf("Defaulting to port %s", port)
+	}
+
+	log.Printf("Listening on port %s", port)
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), router))
 }
 
 func clearCache() error {
