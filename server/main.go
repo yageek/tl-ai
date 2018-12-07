@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"encoding/gob"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,7 +16,7 @@ import (
 )
 
 var (
-	store storage.Store
+	store *storage.Store
 
 	USERNAME string
 	PASSWORD string
@@ -36,27 +38,21 @@ func main() {
 	}
 
 	// Load API data
-	apiData, err := getCacheData()
+
+	apiData := dataprovider.APIRawData{}
+	b, err := hex.DecodeString(embeddedGOB)
 	if err != nil {
-		log.Fatalf("Can not get API data: %s\n", err)
+		log.Panicf("Can not decode GOB: %s", err)
+	}
+
+	buff := bytes.NewBuffer(b)
+	err = gob.NewDecoder(buff).Decode(&apiData)
+	if err != nil {
+		log.Fatalf("Can not load API data: %s\n", err)
 	}
 
 	// Store
-	store = storage.NewLocalStorage(apiData)
-
-	// bfs, err := search.NewBFS(store)
-	// if err != nil {
-	// 	log.Fatalf("Error store: %s", err)
-	// }
-
-	// steps, err := bfs.FindStopToStopPath("Sablons", "Renens-Gare sud")
-	// if err != nil {
-	// 	log.Fatalf("Error store: %s", err)
-	// }
-
-	// for i, step := range steps {
-	// 	fmt.Printf("Step %d: %s\n", i, step.Stop.Name)
-	// }
+	store = storage.NewStore(apiData)
 
 	// Main client
 	tlClient = tlgo.NewClient()
@@ -74,46 +70,4 @@ func main() {
 
 	log.Printf("Listening on port %s", port)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), router))
-}
-
-func clearCache() error {
-	return os.Remove(lastDataCache)
-}
-
-func getCacheData() (dataprovider.APIRawData, error) {
-
-	rawData := dataprovider.APIRawData{}
-	if _, err := os.Stat(lastDataCache); os.IsNotExist(err) {
-		log.Printf("No cache files. Loading from the API...")
-
-		data, err := dataprovider.GetAPIData()
-		if err != nil {
-			return dataprovider.APIRawData{}, err
-		}
-
-		file, err := os.Create(lastDataCache)
-		if err != nil {
-			return dataprovider.APIRawData{}, err
-		}
-
-		if err := gob.NewEncoder(file).Encode(&data); err != nil {
-			return dataprovider.APIRawData{}, err
-		}
-
-		rawData = data
-
-	} else {
-		log.Printf("Reading cache files ....")
-		file, err := os.Open(lastDataCache)
-		if err != nil {
-			return dataprovider.APIRawData{}, err
-		}
-
-		err = gob.NewDecoder(file).Decode(&rawData)
-		if err != nil {
-			return dataprovider.APIRawData{}, err
-		}
-	}
-
-	return rawData, nil
 }
