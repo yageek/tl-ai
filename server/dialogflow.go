@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -163,7 +162,7 @@ func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 	for _, route := range routes {
 
 		if route.CityDestinationStopName == stopDirectionName {
-			answerNextSchedule(w, originStop, route.ID, stopDirectionName, line)
+			answerNextSchedule(w, originStop, route, line)
 			return
 		}
 	}
@@ -172,13 +171,15 @@ func handleNextDepartureQuery(w http.ResponseWriter, f fullfillment) {
 
 }
 
-func getNextDeparture(stop tlgo.Stop, lineID string) ([]tlgo.Journey, error) {
-	return tlClient.ListStopDepartures(stop.ID, lineID, time.Now(), false)
+func getNextDeparture(stop tlgo.Stop, route tlgo.Route, lineID string) ([]tlgo.Journey, error) {
+	return tlClient.ListStopDepartures(stop.ID, lineID, time.Now(), route.Wayback)
 }
 
-func answerNextSchedule(w http.ResponseWriter, stop tlgo.Stop, routeID, direction string, line tlgo.Line) {
+func answerNextSchedule(w http.ResponseWriter, stop tlgo.Stop, route tlgo.Route, line tlgo.Line) {
 
-	departures, err := getNextDeparture(stop, line.ID)
+	log.Printf("Asking next departure from %s to %s via %s \n", stop.Name, route.CityDestinationStopName, line.ShortName)
+
+	departures, err := getNextDeparture(stop, route, line.ID)
 
 	if err != nil {
 		log.Println("TLAPI get schedules error:", err)
@@ -187,30 +188,29 @@ func answerNextSchedule(w http.ResponseWriter, stop tlgo.Stop, routeID, directio
 	}
 
 	if len(departures) < 1 {
-		msg := fmt.Sprintf("Aucun départ n'a été trouvé sur la ligne %s en direction de %s", line.ShortName, direction)
+		msg := fmt.Sprintf("Aucun départ n'a été trouvé sur la ligne %s en direction de %s", line.ShortName, route.CityDestination)
 		answer(w, msg)
 	}
 
-	msg := fmt.Sprintf("Le prochain bus %s en direction de %s partira ", line.ShortName, direction)
+	msg := fmt.Sprintf("Le prochain bus %s en direction de %s partira ", line.ShortName, route.CityDestination)
 
 	departure := departures[0]
 
+	log.Printf("Asnwer before rounding is: %s\n", departure.WaitingTime)
 	var waiting string
-	if departure.WaitingTime.Minutes() < 0 {
-		waiting = "dans moins d'une minute."
+	if departure.WaitingTime.Seconds() < 60 {
+		waiting = fmt.Sprintf("dans %d secondes environ", int(departure.WaitingTime.Seconds()))
 	} else if departure.WaitingTime.Hours() < 1.0 {
-		minutes := int(math.Ceil(departure.WaitingTime.Minutes()))
-		if minutes > 1 {
-			waiting = fmt.Sprintf("dans %d minutes environ", minutes)
-		} else {
-			waiting = fmt.Sprintf("dans %d minutes environ", minutes)
-		}
+
+		seconds := int(departure.WaitingTime.Seconds())
+		minutes := seconds / 60
+		waiting = fmt.Sprintf("dans %d minutes et %d secondes environ", minutes, seconds%60)
 
 	} else {
 		waiting = "dans plus d'une heure."
 	}
 
-	msg += waiting
+	msg += waiting + fmt.Sprintf(" depuis %s", stop.Name)
 
 	answer(w, msg)
 }
